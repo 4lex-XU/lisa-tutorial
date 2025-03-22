@@ -1,12 +1,12 @@
 class setofintegervalues {
-	/*basic() {
+	basic() {
 		def i = 2;
 		def j = -10;
 		def a = i + j;
 		def s = i - j;
 		def m = i * j;
 		def d = i / j;
-	}*/
+	}
 
 	basic(a) {
 	    def x = 0;
@@ -14,7 +14,7 @@ class setofintegervalues {
 	        x = x + 1;
 	}
 
-	/*severalvalues() {
+	severalvalues() {
 	    def i = 0;
 	    def j = 1;
 	    if(i > 1) {
@@ -44,19 +44,19 @@ class setofintegervalues {
         	    }
         	   def a = i + j;
 
-    }*/
+    }
 
-/*
+
     whilestatement() {
         def i = 0;
         while(i<5)
           i = i + 1;
-    }*/
+    }
 
-	/*ifstatement() {
+	ifstatement() {
 	    def i = 0;
 	    if(i > 0)
 	        i = 1;
 	    def j = i * 0;
-	}*/
+	}
 }
