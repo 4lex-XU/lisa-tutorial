@@ -42,6 +42,8 @@ public class IntervalWithRoundingTest {
         // Instantiate LiSA with our configuration
         LiSA lisa = new LiSA(conf);
 
+        //conf.wideningThreshold = 10;
+
         // Run the analysis
         lisa.run(program);
     }
