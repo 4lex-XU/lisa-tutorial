@@ -81,6 +81,7 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
 
     @Override
     public IntervalWithRounding wideningAux(IntervalWithRounding other) throws SemanticException {
+        System.out.println(this.isBottom());
         if (this.isBottom()) return other;
         if (other.isBottom()) return this;
         FloatOrInf newLow = other.low.lessThan(this.low) ? FloatOrInf.infiniteNeg : this.low;
@@ -162,7 +163,7 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
 
     @Override
     public IntervalWithRounding evalBinaryExpression(BinaryOperator operator, IntervalWithRounding left, IntervalWithRounding right, ProgramPoint pp, SemanticOracle oracle) throws SemanticException {
-        System.out.println(left + " ; " + right);
+        System.out.println(left + " " + operator +" " + right);
         if (left.isBottom() || right.isBottom()) return BOTTOM;
         if (operator instanceof AdditionOperator) {
             FloatOrInf low = FloatOrInf.add(left.low, right.low);
@@ -360,9 +361,12 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
         ProgramPoint dest,
         SemanticOracle oracle)
         throws SemanticException {
+
         Identifier id;
         IntervalWithRounding eval;
         boolean rightIsExpr;
+
+        //System.out.println("left : " + eval(left, environment, src, oracle) + "right" + eval(right, environment, src, oracle)  );
 
         // Étape 1 : Identifier la variable et évaluer l'autre opérande
         if (left instanceof Identifier) {
@@ -420,7 +424,7 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
                 update = lowIsMinusInfinity ? null : starting.glb(lowp1_inf);
             } else {
                 // 10.0 > i -> i: [-∞, 10.0 - 1]
-                update = lowIsMinusInfinity ? eval : starting.glb(inf_highm1);
+                update = !eval.isTop() && lowIsMinusInfinity ? eval : starting.glb(inf_highm1);
             }
         } else if (operator == ComparisonLe.INSTANCE) {
             if (rightIsExpr) {
@@ -431,15 +435,17 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
                 update = lowIsMinusInfinity ? null : starting.glb(low_inf);
             }
         } else if (operator == ComparisonLt.INSTANCE) {
+            //System.out.println("ICI ");
             if (rightIsExpr) {
                 // i < 10.0 -> i: [-∞, 10.0 - 1]
-                update = lowIsMinusInfinity ? eval : starting.glb(inf_highm1);
+                update = !eval.isTop() && lowIsMinusInfinity ? eval : starting.glb(inf_highm1);
             } else {
                 // 10.0 < i -> i: [10.0 + 1, +∞]
                 update = lowIsMinusInfinity ? null : starting.glb(lowp1_inf);
             }
         }
 
+        System.out.println("update : " + update );
         // Étape 5 : Mettre à jour l'environnement
         if (update == null) {
             return environment; // Pas de raffinement possible
