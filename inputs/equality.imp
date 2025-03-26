@@ -1,0 +1,19 @@
+class equality {
+
+    testEquality(x) {
+        def y = x;
+        def z = y;
+        x = z;       // à ce stade, x == y == z
+        def w = 5;
+        y = w;       // y != x, y != z
+    }
+
+    assignDifferent() {
+        def a = 1;
+        def b = 2;
+        def c = b;
+        a = c;
+        b = 3;       // b change de valeur, doit casser les égalités
+    }
+
+}
