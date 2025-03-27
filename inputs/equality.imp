@@ -1,19 +1,55 @@
 class equality {
 
-    testEquality(x) {
+    test1(x) {
         def y = x;
         def z = y;
-        x = z;       // à ce stade, x == y == z
-        def w = 5;
-        y = w;       // y != x, y != z
+        def w = 3;
+        y = w;
+        /* Résultat attendu :
+           x: [x]
+           y: [y, w]
+           z: [z]
+           w: [y, w]
+        */
     }
 
-    assignDifferent() {
+    test2() {
         def a = 1;
-        def b = 2;
-        def c = b;
-        a = c;
-        b = 3;       // b change de valeur, doit casser les égalités
+        def b = 1;
+        def c = a;
+        if (a == b) {
+            def d = a;
+        }
+        /* Résultat attendu :
+           a: [a, b, c, d]
+           b: [a, b, c, d]
+           c: [a, b, c, d]
+           d: [a, b, c, d]
+        */
     }
 
+    test3(x) {
+        def y = x + 1;
+        def z = y;
+        x = 0;
+        /* Résultat attendu :
+           x: [x]
+           y: [y, z]
+           z: [y, z]
+        */
+    }
+
+    test4() {
+            def x = 5;
+            def y = 5;
+        }
+
+    test5() {
+            def x = 0;
+            def y = 0;
+            while (x < 10) {
+                x = x + 1;
+                y = y + 1;
+            }
+        }
 }
