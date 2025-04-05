@@ -36,9 +36,6 @@ public class IntervalWithRoundingTest {
 
         conf.openCallPolicy = ReturnTopPolicy.INSTANCE;
 
-        // Enable serialization of results for debugging
-        conf.serializeResults = true;
-
         // Instantiate LiSA with our configuration
         LiSA lisa = new LiSA(conf);
 
