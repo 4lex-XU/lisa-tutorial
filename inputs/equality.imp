@@ -5,7 +5,14 @@ class equality {
         def z = y;
         def w = 3;
         y = w;
+
         /* Résultat attendu :
+           x: [x]
+           y: [y, w]
+           z: [z]
+           w: [y, w]
+        */
+        /* Résultat obtenu :
            x: [x]
            y: [y, w]
            z: [z]
@@ -20,11 +27,18 @@ class equality {
         if (a == b) {
             def d = a;
         }
+
         /* Résultat attendu :
-           a: [a, b, c, d]
-           b: [a, b, c, d]
-           c: [a, b, c, d]
-           d: [a, b, c, d]
+            a: [a, b, c]
+            b: [a, b, c]
+            c: [a, b, c]
+            d: [d]
+        */
+        /* Résultat obtenu :
+            a: [a, b, c]
+            b: [a, b, c]
+            c: [a, b, c]
+            d: [d]
         */
     }
 
@@ -32,24 +46,34 @@ class equality {
         def y = x + 1;
         def z = y;
         x = 0;
+
         /* Résultat attendu :
+           x: [x]
+           y: [y, z]
+           z: [y, z]
+        */
+        /* Résultat obtenu :
            x: [x]
            y: [y, z]
            z: [y, z]
         */
     }
 
-    test4() {
-            def x = 5;
-            def y = 5;
+    test5() {
+        def x = 0;
+        def y = 0;
+        while (x < 10) {
+            x = x + 1;
+            y = y + 1;
         }
 
-    test5() {
-            def x = 0;
-            def y = 0;
-            while (x < 10) {
-                x = x + 1;
-                y = y + 1;
-            }
-        }
+        /* Résultat attendu :
+           x: [x, y]
+           y: [x, y]
+        */
+        /* Résultat obtenu :
+            x: [x, y]
+            y: [x, y]
+        */
+    }
 }
