@@ -4,12 +4,12 @@ import it.unive.lisa.analysis.SemanticException;
 import it.unive.lisa.analysis.SemanticOracle;
 import it.unive.lisa.analysis.nonrelational.value.BaseNonRelationalValueDomain;
 import it.unive.lisa.analysis.nonrelational.value.ValueEnvironment;
-import it.unive.lisa.program.cfg.CodeLocation;
 import it.unive.lisa.program.cfg.ProgramPoint;
 import it.unive.lisa.symbolic.value.Constant;
 import it.unive.lisa.symbolic.value.Identifier;
 import it.unive.lisa.symbolic.value.ValueExpression;
 import it.unive.lisa.symbolic.value.operator.AdditionOperator;
+import it.unive.lisa.symbolic.value.operator.DivisionOperator;
 import it.unive.lisa.symbolic.value.operator.MultiplicationOperator;
 import it.unive.lisa.symbolic.value.operator.SubtractionOperator;
 import it.unive.lisa.symbolic.value.operator.binary.*;
@@ -18,6 +18,7 @@ import it.unive.lisa.symbolic.value.operator.unary.UnaryOperator;
 import it.unive.lisa.util.representation.StringRepresentation;
 import it.unive.lisa.util.representation.StructuredRepresentation;
 
+import java.math.BigDecimal;
 import java.util.Arrays;
 
 /**
@@ -61,7 +62,7 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
 
     @Override
     public boolean isBottom() {
-        return low.isPosInf() || high.isNegInf() || (!low.isInf() && !high.isInf() && low.value > high.value);
+        return low.isPosInf() || high.isNegInf() || (!low.isInf() && !high.isInf() && low.value.compareTo(high.value) > 0);
     }
 
     @Override
@@ -81,55 +82,12 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
 
     @Override
     public IntervalWithRounding wideningAux(IntervalWithRounding other) throws SemanticException {
-        System.out.println(this.isBottom());
         if (this.isBottom()) return other;
         if (other.isBottom()) return this;
         FloatOrInf newLow = other.low.lessThan(this.low) ? FloatOrInf.infiniteNeg : this.low;
         FloatOrInf newHigh = this.high.lessThan(other.high) ? FloatOrInf.infinitePos : this.high;
         return new IntervalWithRounding(newLow, newHigh);
     }
-    /*
-    @Override
-    public IntervalWithRounding wideningAux(IntervalWithRounding other) throws SemanticException {
-        if (this.isBottom()) return other;
-        if (other.isBottom()) return this;
-
-        // Gestion de la borne inférieure
-        FloatOrInf newLow;
-        if (other.low.lessThan(this.low)) {
-            // La borne inférieure diminue
-            if (!this.low.isInf() && this.low.value > -10) {
-                newLow = new FloatOrInf(-10.0);
-            } else if (!this.low.isInf() && this.low.value > -100) {
-                newLow = new FloatOrInf(-100.0);
-            } else if (!this.low.isInf() && this.low.value > -1000) {
-                newLow = new FloatOrInf(-1000.0);
-            } else {
-                newLow = FloatOrInf.infiniteNeg;
-            }
-        } else {
-            newLow = this.low;
-        }
-
-        // Gestion de la borne supérieure
-        FloatOrInf newHigh;
-        if (this.high.lessThan(other.high)) {
-            // La borne supérieure augmente
-            if (!this.high.isInf() && this.high.value < 10) {
-                newHigh = new FloatOrInf(10.0);
-            } else if (!this.high.isInf() && this.high.value < 100) {
-                newHigh = new FloatOrInf(100.0);
-            } else if (!this.high.isInf() && this.high.value < 1000) {
-                newHigh = new FloatOrInf(1000.0);
-            } else {
-                newHigh = FloatOrInf.infinitePos;
-            }
-        } else {
-            newHigh = this.high;
-        }
-
-        return new IntervalWithRounding(newLow, newHigh);
-    }*/
 
     @Override
     public boolean lessOrEqualAux(IntervalWithRounding other) throws SemanticException {
@@ -146,10 +104,11 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
     @Override
     public IntervalWithRounding evalNonNullConstant(Constant constant, ProgramPoint pp, SemanticOracle oracle) throws SemanticException {
         if (constant.getValue() instanceof Number) {
-            double val = ((Number) constant.getValue()).doubleValue();
+            Number num = (Number) constant.getValue();
+            BigDecimal val = new BigDecimal(num.toString());
             return new IntervalWithRounding(new FloatOrInf(val), new FloatOrInf(val));
         }
-        return TOP; // Non-numeric constants are approximated as top
+        return TOP;
     }
 
     @Override
@@ -163,12 +122,12 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
 
     @Override
     public IntervalWithRounding evalBinaryExpression(BinaryOperator operator, IntervalWithRounding left, IntervalWithRounding right, ProgramPoint pp, SemanticOracle oracle) throws SemanticException {
-        System.out.println(left + " " + operator +" " + right);
+        System.out.println(left + " " + operator + " " + right);
         if (left.isBottom() || right.isBottom()) return BOTTOM;
+
         if (operator instanceof AdditionOperator) {
             FloatOrInf low = FloatOrInf.add(left.low, right.low);
             FloatOrInf high = FloatOrInf.add(left.high, right.high);
-            // Adjust for rounding
             return new IntervalWithRounding(low, high);
         } else if (operator instanceof SubtractionOperator) {
             FloatOrInf low = FloatOrInf.sub(left.low, right.high);
@@ -178,6 +137,24 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
             FloatOrInf[] bounds = {
                 FloatOrInf.mul(left.low, right.low), FloatOrInf.mul(left.low, right.high),
                 FloatOrInf.mul(left.high, right.low), FloatOrInf.mul(left.high, right.high)
+            };
+            FloatOrInf low = FloatOrInf.min(Arrays.stream(bounds).toArray(FloatOrInf[]::new));
+            FloatOrInf high = FloatOrInf.max(Arrays.stream(bounds).toArray(FloatOrInf[]::new));
+            return new IntervalWithRounding(low, high);
+        } else if (operator instanceof DivisionOperator) {
+            // Vérifier si le diviseur contient 0
+            if (!right.low.isInf() && !right.high.isInf() &&
+                right.low.value.compareTo(BigDecimal.ZERO) <= 0 &&
+                right.high.value.compareTo(BigDecimal.ZERO) >= 0) {
+                return TOP; // Division par un intervalle contenant 0 -> [-∞, +∞]
+            }
+
+            // Calculer toutes les combinaisons possibles pour les bornes
+            FloatOrInf[] bounds = {
+                FloatOrInf.div(left.low, right.low),  // a/c
+                FloatOrInf.div(left.low, right.high), // a/d
+                FloatOrInf.div(left.high, right.low), // b/c
+                FloatOrInf.div(left.high, right.high) // b/d
             };
             FloatOrInf low = FloatOrInf.min(Arrays.stream(bounds).toArray(FloatOrInf[]::new));
             FloatOrInf high = FloatOrInf.max(Arrays.stream(bounds).toArray(FloatOrInf[]::new));
@@ -216,23 +193,28 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
     // Helper class for representing float or infinity
     private static class FloatOrInf {
         private final boolean isInf;
-        private final boolean isNeg; // True if negative infinity, false if positive infinity
-        private final double value;
+        private final boolean isNeg; // True si -∞, false si +∞
+        private final BigDecimal value; // Valeur finie, null si infini
         public static final FloatOrInf infiniteNeg = new FloatOrInf(true);
         public static final FloatOrInf infinitePos = new FloatOrInf(false);
 
-        // Constructor for finite value
-        public FloatOrInf(double value) {
+        // Constructeur pour une valeur finie
+        public FloatOrInf(BigDecimal value) {
             this.isInf = false;
             this.isNeg = false;
             this.value = value;
         }
 
-        // Constructor for infinity
+        // Constructeur pour une valeur finie à partir d'un double
+        public FloatOrInf(double value) {
+            this(new BigDecimal(String.valueOf(value))); // Conversion exacte via String
+        }
+
+        // Constructeur pour l'infini
         private FloatOrInf(boolean isNeg) {
             this.isInf = true;
             this.isNeg = isNeg;
-            this.value = isNeg ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
+            this.value = null;
         }
 
         public boolean isInf() {
@@ -251,7 +233,7 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
             if (a.isNegInf() || b.isNegInf()) return infiniteNeg;
             if (a.isPosInf()) return b;
             if (b.isPosInf()) return a;
-            return new FloatOrInf(Math.min(a.value, b.value));
+            return new FloatOrInf(a.value.min(b.value));
         }
 
         public static FloatOrInf min(FloatOrInf... values) {
@@ -262,7 +244,7 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
             if (a.isPosInf() || b.isPosInf()) return infinitePos;
             if (a.isNegInf()) return b;
             if (b.isNegInf()) return a;
-            return new FloatOrInf(Math.max(a.value, b.value));
+            return new FloatOrInf(a.value.max(b.value));
         }
 
         public static FloatOrInf max(FloatOrInf... values) {
@@ -274,7 +256,7 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
                 if (a.isNegInf() || b.isNegInf()) return infiniteNeg;
                 return infinitePos;
             }
-            return new FloatOrInf(a.value + b.value);
+            return new FloatOrInf(a.value.add(b.value));
         }
 
         public static FloatOrInf sub(FloatOrInf a, FloatOrInf b) {
@@ -282,22 +264,42 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
                 if (a.isNegInf() || b.isPosInf()) return infiniteNeg;
                 if (a.isPosInf() || b.isNegInf()) return infinitePos;
             }
-            return new FloatOrInf(a.value - b.value);
+            return new FloatOrInf(a.value.subtract(b.value));
         }
 
         public static FloatOrInf mul(FloatOrInf a, FloatOrInf b) {
             if (a.isInf() || b.isInf()) {
-                if ((a.isNegInf() && b.value < 0) || (b.isNegInf() && a.value < 0)) return infinitePos;
-                if ((a.isPosInf() && b.value < 0) || (b.isPosInf() && a.value < 0)) return infiniteNeg;
-                return infinitePos;
+                int sign = (a.isNegInf() || b.isNegInf()) ? -1 : 1;
+                if (a.value != null && a.value.signum() < 0) sign *= -1;
+                if (b.value != null && b.value.signum() < 0) sign *= -1;
+                return sign < 0 ? infiniteNeg : infinitePos;
             }
-            return new FloatOrInf(a.value * b.value);
+            return new FloatOrInf(a.value.multiply(b.value));
+        }
+
+        public static FloatOrInf div(FloatOrInf a, FloatOrInf b) {
+            if (a.isInf() || b.isInf()) {
+                if (a.isNegInf()) {
+                    if (b.isNegInf() || b.isPosInf()) return infinitePos;
+                    return b.value.signum() < 0 ? infinitePos : infiniteNeg;
+                } else if (a.isPosInf()) {
+                    if (b.isNegInf() || b.isPosInf()) return infinitePos;
+                    return b.value.signum() < 0 ? infiniteNeg : infinitePos;
+                } else if (b.isNegInf()) {
+                    return new FloatOrInf(BigDecimal.ZERO);
+                } else if (b.isPosInf()) {
+                    return new FloatOrInf(BigDecimal.ZERO);
+                }
+            } else if (b.value.compareTo(BigDecimal.ZERO) == 0) {
+                return a.value.signum() < 0 ? infiniteNeg : infinitePos;
+            }
+            return new FloatOrInf(a.value.divide(b.value, 10, BigDecimal.ROUND_HALF_UP));
         }
 
         public static FloatOrInf negate(FloatOrInf a) {
             if (a.isNegInf()) return infinitePos;
             if (a.isPosInf()) return infiniteNeg;
-            return new FloatOrInf(-a.value);
+            return new FloatOrInf(a.value.negate());
         }
 
         public boolean lessThan(FloatOrInf other) {
@@ -305,7 +307,7 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
             if (this.isPosInf()) return false;
             if (other.isNegInf()) return false;
             if (other.isPosInf()) return true;
-            return this.value < other.value;
+            return this.value.compareTo(other.value) < 0;
         }
 
         public boolean lessOrEqual(FloatOrInf other) {
@@ -313,26 +315,14 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
             if (this.isPosInf()) return other.isPosInf();
             if (other.isNegInf()) return false;
             if (other.isPosInf()) return true;
-            return this.value <= other.value;
-        }
-
-        // Adjust for rounding down (slightly widen lower bound)
-        public FloatOrInf roundDown() {
-            if (isInf()) return this;
-            return new FloatOrInf(value - Math.ulp(Math.abs(value)));
-        }
-
-        // Adjust for rounding up (slightly widen upper bound)
-        public FloatOrInf roundUp() {
-            if (isInf()) return this;
-            return new FloatOrInf(value + Math.ulp(Math.abs(value)));
+            return this.value.compareTo(other.value) <= 0;
         }
 
         @Override
         public String toString() {
             if (isNegInf()) return "-∞";
             if (isPosInf()) return "+∞";
-            return String.valueOf(value);
+            return value.stripTrailingZeros().toPlainString();
         }
 
         @Override
@@ -342,16 +332,15 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
             FloatOrInf other = (FloatOrInf) obj;
             if (this.isInf && other.isInf) return this.isNeg == other.isNeg;
             if (this.isInf || other.isInf) return false;
-            return this.value == other.value;
+            return this.value.compareTo(other.value) == 0;
         }
 
         @Override
         public int hashCode() {
-            return isInf ? (isNeg ? -1 : 1) : Double.hashCode(value);
+            return isInf ? (isNeg ? -1 : 1) : value.hashCode();
         }
     }
 
-    @Override
     public ValueEnvironment<IntervalWithRounding> assumeBinaryExpression(
         ValueEnvironment<IntervalWithRounding> environment,
         BinaryOperator operator,
@@ -359,100 +348,113 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
         ValueExpression right,
         ProgramPoint src,
         ProgramPoint dest,
-        SemanticOracle oracle)
-        throws SemanticException {
+        SemanticOracle oracle) throws SemanticException {
 
-        Identifier id;
-        IntervalWithRounding eval;
-        boolean rightIsExpr;
-
-        //System.out.println("left : " + eval(left, environment, src, oracle) + "right" + eval(right, environment, src, oracle)  );
-
-        // Étape 1 : Identifier la variable et évaluer l'autre opérande
-        if (left instanceof Identifier) {
-            eval = eval(right, environment, src, oracle);
-            id = (Identifier) left;
-            rightIsExpr = true;
-        } else if (right instanceof Identifier) {
-            eval = eval(left, environment, src, oracle);
-            id = (Identifier) right;
-            rightIsExpr = false;
-        } else {
-            return environment; // Ni left ni right n'est un identifiant, pas de raffinement
+        if (environment.isBottom()) {
+            return environment;
         }
 
-        // Étape 2 : Récupérer l'intervalle actuel de la variable
-        IntervalWithRounding starting = environment.getState(id);
-        if (eval.isBottom() || starting.isBottom()) {
+        IntervalWithRounding leftValue = environment.eval(left, src, oracle);
+        IntervalWithRounding rightValue = environment.eval(right, src, oracle);
+
+        if (leftValue.isBottom() || rightValue.isBottom()) {
             return environment.bottom();
         }
 
-        // Étape 3 : Préparer les intervalles pour le raffinement
-        boolean lowIsMinusInfinity = eval.low.isNegInf();
-        IntervalWithRounding low_inf = new IntervalWithRounding(
-            eval.low,
-            FloatOrInf.infinitePos
-        );
-        IntervalWithRounding lowp1_inf = new IntervalWithRounding(
-            new FloatOrInf(eval.low.isInf() ? eval.low.value : eval.low.value + 1.0),
-            FloatOrInf.infinitePos
-        );
-        IntervalWithRounding inf_high = new IntervalWithRounding(
-            FloatOrInf.infiniteNeg,
-            eval.high
-        );
-        IntervalWithRounding inf_highm1 = new IntervalWithRounding(
-            FloatOrInf.infiniteNeg,
-            new FloatOrInf(eval.high.isInf() ? eval.high.value : eval.high.value - 1.0)
-        );
+        Identifier id = null;
+        IntervalWithRounding eval = null;
+        boolean rightIsExpr = false;
 
-        // Étape 4 : Raffiner l'intervalle en fonction de l'opérateur
-        IntervalWithRounding update = null;
-        if (operator == ComparisonEq.INSTANCE) {
-            update = eval; // i == 10.0 -> i: [10.0, 10.0]
-        } else if (operator == ComparisonGe.INSTANCE) {
-            if (rightIsExpr) {
-                // i >= 10.0 -> i: [10.0, +∞]
-                update = lowIsMinusInfinity ? null : starting.glb(low_inf);
-            } else {
-                // 10.0 >= i -> i: [-∞, 10.0]
-                update = starting.glb(inf_high);
-            }
-        } else if (operator == ComparisonGt.INSTANCE) {
-            if (rightIsExpr) {
-                // i > 10.0 -> i: [10.0 + 1, +∞]
-                update = lowIsMinusInfinity ? null : starting.glb(lowp1_inf);
-            } else {
-                // 10.0 > i -> i: [-∞, 10.0 - 1]
-                update = !eval.isTop() && lowIsMinusInfinity ? eval : starting.glb(inf_highm1);
-            }
-        } else if (operator == ComparisonLe.INSTANCE) {
-            if (rightIsExpr) {
-                // i <= 10.0 -> i: [-∞, 10.0]
-                update = starting.glb(inf_high);
-            } else {
-                // 10.0 <= i -> i: [10.0, +∞]
-                update = lowIsMinusInfinity ? null : starting.glb(low_inf);
-            }
-        } else if (operator == ComparisonLt.INSTANCE) {
-            //System.out.println("ICI ");
-            if (rightIsExpr) {
-                // i < 10.0 -> i: [-∞, 10.0 - 1]
-                update = !eval.isTop() && lowIsMinusInfinity ? eval : starting.glb(inf_highm1);
-            } else {
-                // 10.0 < i -> i: [10.0 + 1, +∞]
-                update = lowIsMinusInfinity ? null : starting.glb(lowp1_inf);
-            }
-        }
-
-        System.out.println("update : " + update );
-        // Étape 5 : Mettre à jour l'environnement
-        if (update == null) {
-            return environment; // Pas de raffinement possible
-        } else if (update.isBottom()) {
-            return environment.bottom(); // Condition contradictoire
+        if (left instanceof Identifier) {
+            id = (Identifier) left;
+            eval = rightValue;
+            rightIsExpr = true;
+        } else if (right instanceof Identifier) {
+            id = (Identifier) right;
+            eval = leftValue;
+            rightIsExpr = false;
         } else {
-            return environment.putState(id, update); // Mettre à jour l'intervalle de la variable
+            return environment;
         }
+
+        IntervalWithRounding starting = environment.getState(id);
+        if (starting == null) {
+            starting = top();
+        }
+
+        IntervalWithRounding update = null;
+        if (operator instanceof ComparisonLt) {
+            if (rightIsExpr) {
+                FloatOrInf newHigh;
+                if (eval.low.isInf()) {
+                    newHigh = eval.low; // -∞ - 1 = -∞, +∞ - 1 = +∞ (conservative)
+                } else {
+                    newHigh = new FloatOrInf(eval.low.value.subtract(BigDecimal.ONE));
+                }
+                update = new IntervalWithRounding(starting.low, FloatOrInf.min(starting.high, newHigh));
+            } else {
+                update = new IntervalWithRounding(FloatOrInf.max(starting.low, eval.low), starting.high);
+            }
+        } else if (operator instanceof ComparisonLe) {
+            if (rightIsExpr) {
+                update = new IntervalWithRounding(starting.low, FloatOrInf.min(starting.high, eval.low));
+            } else {
+                update = new IntervalWithRounding(FloatOrInf.max(starting.low, eval.low), starting.high);
+            }
+        } else if (operator instanceof ComparisonGt) {
+            if (rightIsExpr) {
+                FloatOrInf newLow;
+                if (eval.high.isInf()) {
+                    newLow = eval.high; // +∞ + 1 = +∞, -∞ + 1 = -∞ (conservative)
+                } else {
+                    newLow = new FloatOrInf(eval.high.value.add(BigDecimal.ONE));
+                }
+                update = new IntervalWithRounding(FloatOrInf.max(starting.low, newLow), starting.high);
+            } else {
+                FloatOrInf newHigh;
+                if (eval.high.isInf()) {
+                    newHigh = eval.high; // +∞ - 1 = +∞, -∞ - 1 = -∞ (conservative)
+                } else {
+                    newHigh = new FloatOrInf(eval.high.value.subtract(BigDecimal.ONE));
+                }
+                update = new IntervalWithRounding(starting.low, FloatOrInf.min(starting.high, newHigh));
+            }
+        } else if (operator instanceof ComparisonGe) {
+            if (rightIsExpr) {
+                update = new IntervalWithRounding(FloatOrInf.max(starting.low, eval.high), starting.high);
+            } else {
+                update = new IntervalWithRounding(starting.low, FloatOrInf.min(starting.high, eval.high));
+            }
+        } else if (operator instanceof ComparisonEq) {
+            if (starting.low.value != null && eval.low.value != null &&
+                starting.high.value != null && eval.high.value != null &&
+                starting.low.value.compareTo(eval.low.value) <= 0 &&
+                starting.high.value.compareTo(eval.high.value) >= 0) {
+                update = new IntervalWithRounding(eval.low, eval.high);
+            } else {
+                update = bottom();
+            }
+        } else if (operator instanceof ComparisonNe) {
+            update = starting;
+        } else {
+            return environment;
+        }
+
+        if (update == null || update.isBottom()) {
+            return environment;
+        }
+
+        IntervalWithRounding refined = new IntervalWithRounding(
+            FloatOrInf.max(starting.low, update.low),
+            FloatOrInf.min(starting.high, update.high)
+        );
+
+        if (!refined.isBottom() &&
+            refined.low.value != null && refined.high.value != null &&
+            refined.low.value.compareTo(refined.high.value) > 0) {
+            return environment.bottom();
+        }
+
+        return environment.putState(id, refined);
     }
 }
