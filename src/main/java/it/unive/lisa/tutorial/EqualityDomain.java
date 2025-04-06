@@ -12,14 +12,17 @@ import it.unive.lisa.symbolic.value.BinaryExpression;
 import it.unive.lisa.symbolic.value.Constant;
 import it.unive.lisa.symbolic.value.Identifier;
 import it.unive.lisa.symbolic.value.ValueExpression;
+import it.unive.lisa.symbolic.value.operator.binary.BinaryOperator;
 import it.unive.lisa.symbolic.value.operator.binary.ComparisonEq;
 
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.function.Predicate;
 
 public class EqualityDomain extends FunctionalLattice<EqualityDomain, Identifier, EqualityDomain.EqualityGroup>
-        implements ValueDomain<EqualityDomain> {
+    implements ValueDomain<EqualityDomain> {
 
+    // Constructeurs et méthodes inchangées omises pour brièveté
     public EqualityDomain(EqualityGroup treillis, Map<Identifier, EqualityGroup> mapping) {
         super(treillis, mapping);
     }
@@ -54,34 +57,45 @@ public class EqualityDomain extends FunctionalLattice<EqualityDomain, Identifier
 
     @Override
     public EqualityDomain assign(Identifier id, ValueExpression expr, ProgramPoint pp, SemanticOracle oracle)
-            throws SemanticException {
-        // On oublie d'abord l'identifiant pour le réinitialiser proprement
+        throws SemanticException {
         EqualityDomain current = this.forgetIdentifier(id);
 
         if (expr instanceof Identifier sourceId) {
-            // Cas x = y : on récupère le groupe de y et on ajoute x
             Set<Identifier> group = new HashSet<>(current.getState(sourceId).elements);
             group.add(id);
             Object sourceValue = current.getState(sourceId).getConcreteValue();
             current = current.putState(id, new EqualityGroup(group, false, sourceValue))
-                    .putState(sourceId, new EqualityGroup(group, false, sourceValue));
-
+                .putState(sourceId, new EqualityGroup(group, false, sourceValue));
         } else if (expr instanceof Constant constant) {
-            // Cas x = 5 : valeur concrète
             Object value = constant.getValue();
             current = current.putState(id, new EqualityGroup(Set.of(id), false, value));
-
         } else if (expr instanceof BinaryExpression binExpr) {
-            // Cas x = y + 1 ou similaire
             ValueExpression left = (ValueExpression) binExpr.getLeft();
             ValueExpression right = (ValueExpression) binExpr.getRight();
-            Object op = binExpr.getOperator();
+            BinaryOperator op = binExpr.getOperator();
 
-            // Si deux constantes => on évalue concrètement
             if (left instanceof Constant l && right instanceof Constant r &&
-                    l.getValue() instanceof Number && r.getValue() instanceof Number) {
-                Number result = evaluateOperation(op, (Number) l.getValue(), (Number) r.getValue());
+                l.getValue() instanceof Number && r.getValue() instanceof Number) {
+                BigDecimal result = evaluateOperation(op, (Number) l.getValue(), (Number) r.getValue());
                 current = current.putState(id, new EqualityGroup(Set.of(id), false, result));
+            } else if (left instanceof Identifier leftId && right instanceof Constant rConst &&
+                rConst.getValue() instanceof Number) {
+                Object leftVal = current.getState(leftId).getConcreteValue();
+                if (leftVal instanceof Number) {
+                    BigDecimal result = evaluateOperation(op, (Number) leftVal, (Number) rConst.getValue());
+                    current = current.putState(id, new EqualityGroup(Set.of(id), false, result));
+                } else {
+                    current = current.putState(id, new EqualityGroup(Set.of(id), false, null));
+                }
+            } else if (right instanceof Identifier rightId && left instanceof Constant lConst &&
+                lConst.getValue() instanceof Number) {
+                Object rightVal = current.getState(rightId).getConcreteValue();
+                if (rightVal instanceof Number) {
+                    BigDecimal result = evaluateOperation(op, (Number) lConst.getValue(), (Number) rightVal);
+                    current = current.putState(id, new EqualityGroup(Set.of(id), false, result));
+                } else {
+                    current = current.putState(id, new EqualityGroup(Set.of(id), false, null));
+                }
             } else {
                 current = current.putState(id, new EqualityGroup(Set.of(id), false, null));
             }
@@ -89,24 +103,54 @@ public class EqualityDomain extends FunctionalLattice<EqualityDomain, Identifier
         return current.mergeGroups();
     }
 
-    private Number evaluateOperation(Object operator, Number left, Number right) {
+    private BigDecimal evaluateOperation(BinaryOperator operator, Number left, Number right) {
+        BigDecimal l = new BigDecimal(left.toString());
+        BigDecimal r = new BigDecimal(right.toString());
         return switch (operator.toString()) {
-            case "+" -> left.intValue() + right.intValue();
-            case "-" -> left.intValue() - right.intValue();
-            case "*" -> left.intValue() * right.intValue();
-            case "/" -> right.intValue() != 0 ? left.intValue() / right.intValue() : null;
+            case "+" -> l.add(r);
+            case "-" -> l.subtract(r);
+            case "*" -> l.multiply(r);
+            case "/" -> r.compareTo(BigDecimal.ZERO) != 0 ? l.divide(r, 10, BigDecimal.ROUND_HALF_UP) : null;
             default -> null;
         };
     }
 
+    private EqualityDomain mergeGroups() {
+        EqualityDomain result = new EqualityDomain();
+        Map<Object, Set<Identifier>> concreteGroups = new HashMap<>();
+
+        for (Identifier id : this.getKeys()) {
+            Object val = this.getState(id).getConcreteValue();
+            if (val != null) {
+                concreteGroups.computeIfAbsent(val, k -> new HashSet<>()).add(id);
+            }
+        }
+
+        for (Map.Entry<Object, Set<Identifier>> entry : concreteGroups.entrySet()) {
+            Object val = entry.getKey();
+            Set<Identifier> group = entry.getValue();
+            for (Identifier member : group) {
+                result = result.putState(member, new EqualityGroup(group, false, val));
+            }
+        }
+
+        for (Identifier id : this.getKeys()) {
+            if (this.getState(id).getConcreteValue() == null) {
+                Set<Identifier> group = new HashSet<>(this.getState(id).elements);
+                result = result.putState(id, new EqualityGroup(group, false, null));
+            }
+        }
+
+        return result;
+    }
+
     @Override
     public EqualityDomain assume(ValueExpression expr, ProgramPoint pp1, ProgramPoint pp2, SemanticOracle oracle)
-            throws SemanticException {
+        throws SemanticException {
         EqualityDomain current = this;
 
         if (expr instanceof BinaryExpression binExpr && binExpr.getOperator() instanceof ComparisonEq) {
             if (binExpr.getLeft() instanceof Identifier leftId && binExpr.getRight() instanceof Identifier rightId) {
-                // Cas x == y : fusion des groupes, si pas contradiction de valeurs concrètes
                 Set<Identifier> mergedGroup = new HashSet<>(current.getState(leftId).elements);
                 mergedGroup.addAll(current.getState(rightId).elements);
                 Object leftVal = current.getState(leftId).getConcreteValue();
@@ -115,47 +159,22 @@ public class EqualityDomain extends FunctionalLattice<EqualityDomain, Identifier
                 if (leftVal != null && rightVal != null && !leftVal.equals(rightVal))
                     return current.bottom();
                 current = current.putState(leftId, new EqualityGroup(mergedGroup, false, finalVal))
-                        .putState(rightId, new EqualityGroup(mergedGroup, false, finalVal));
-
+                    .putState(rightId, new EqualityGroup(mergedGroup, false, finalVal));
             } else if (binExpr.getLeft() instanceof Identifier leftId && binExpr.getRight() instanceof Constant constant) {
-                // Cas x == 5 : on impose la valeur concrète
                 Object constVal = constant.getValue();
                 Object currentVal = current.getState(leftId).getConcreteValue();
                 if (currentVal != null && !currentVal.equals(constVal))
                     return current.bottom();
                 current = current.putState(leftId,
-                        new EqualityGroup(current.getState(leftId).elements, false, constVal));
+                    new EqualityGroup(current.getState(leftId).elements, false, constVal));
             }
         }
         return current.mergeGroups();
     }
 
-    private EqualityDomain mergeGroups() {
-        EqualityDomain result = this;
-        Map<Object, Set<Identifier>> concreteGroups = new HashMap<>();
-
-        // Regrouper tous les identifiants par valeur concrète
-        for (Identifier id : this.getKeys()) {
-            Object val = result.getState(id).getConcreteValue();
-            if (val != null)
-                concreteGroups.computeIfAbsent(val, k -> new HashSet<>()).add(id);
-        }
-
-        // Fusionner les groupes pour chaque valeur concrète
-        for (Identifier id : this.getKeys()) {
-            Set<Identifier> group = new HashSet<>(result.getState(id).elements);
-            Object val = result.getState(id).getConcreteValue();
-            if (val != null && concreteGroups.containsKey(val))
-                group.addAll(concreteGroups.get(val));
-            for (Identifier member : group)
-                result = result.putState(member, new EqualityGroup(group, false, val));
-        }
-        return result;
-    }
-
     @Override
     public Satisfiability satisfies(ValueExpression expr, ProgramPoint pp, SemanticOracle oracle)
-            throws SemanticException {
+        throws SemanticException {
         if (expr instanceof BinaryExpression binExpr && binExpr.getOperator() instanceof ComparisonEq) {
             if (binExpr.getLeft() instanceof Identifier left && binExpr.getRight() instanceof Identifier right) {
                 Set<Identifier> leftGroup = this.getState(left).elements;
@@ -163,7 +182,6 @@ public class EqualityDomain extends FunctionalLattice<EqualityDomain, Identifier
                 Object rightVal = this.getState(right).getConcreteValue();
                 if (leftGroup.contains(right) || (leftVal != null && leftVal.equals(rightVal)))
                     return Satisfiability.SATISFIED;
-
             } else if (binExpr.getLeft() instanceof Identifier left && binExpr.getRight() instanceof Constant constant) {
                 Object constVal = constant.getValue();
                 Object leftVal = this.getState(left).getConcreteValue();
@@ -184,12 +202,10 @@ public class EqualityDomain extends FunctionalLattice<EqualityDomain, Identifier
         EqualityDomain result = this;
 
         if (result.getKeys().contains(id)) {
-            // On extrait tout le groupe et on les réinitialise individuellement
             Set<Identifier> groupToForget = new HashSet<>(result.getState(id).elements);
             for (Identifier var : groupToForget)
                 result = result.putState(var, new EqualityGroup(Set.of(var), true, null));
 
-            // On nettoie les autres groupes s’ils contiennent un élément du groupe oublié
             for (Identifier other : result.getKeys()) {
                 if (!groupToForget.contains(other)) {
                     Set<Identifier> group = new HashSet<>(result.getState(other).elements);
@@ -248,7 +264,6 @@ public class EqualityDomain extends FunctionalLattice<EqualityDomain, Identifier
                 union = union.putState(v, new EqualityGroup(merged, false, val));
         }
 
-        // Ajouter les identifiants que l'on ne connaissait pas avant
         for (Identifier id : other.getKeys()) {
             if (!this.knowsIdentifier(id)) {
                 EqualityGroup group2 = other.getState(id);

@@ -31,8 +31,8 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
     public static final IntervalWithRounding TOP = new IntervalWithRounding(FloatOrInf.infiniteNeg, FloatOrInf.infinitePos);
     private static final IntervalWithRounding BOTTOM = new IntervalWithRounding(FloatOrInf.infinitePos, FloatOrInf.infiniteNeg);
 
-    private final FloatOrInf low;
-    private final FloatOrInf high;
+    final FloatOrInf low;
+    final FloatOrInf high;
 
     // Constructor for an interval [low, high]
     public IntervalWithRounding(FloatOrInf low, FloatOrInf high) {
@@ -135,24 +135,24 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
             return new IntervalWithRounding(low, high);
         } else if (operator instanceof MultiplicationOperator) {
             FloatOrInf[] bounds = {
-                FloatOrInf.mul(left.low, right.low), FloatOrInf.mul(left.low, right.high),
-                FloatOrInf.mul(left.high, right.low), FloatOrInf.mul(left.high, right.high)
+                    FloatOrInf.mul(left.low, right.low), FloatOrInf.mul(left.low, right.high),
+                    FloatOrInf.mul(left.high, right.low), FloatOrInf.mul(left.high, right.high)
             };
             FloatOrInf low = FloatOrInf.min(Arrays.stream(bounds).toArray(FloatOrInf[]::new));
             FloatOrInf high = FloatOrInf.max(Arrays.stream(bounds).toArray(FloatOrInf[]::new));
             return new IntervalWithRounding(low, high);
         } else if (operator instanceof DivisionOperator) {
             if (!right.low.isInf() && !right.high.isInf() &&
-                right.low.value.compareTo(BigDecimal.ZERO) <= 0 &&
-                right.high.value.compareTo(BigDecimal.ZERO) >= 0) {
+                    right.low.value.compareTo(BigDecimal.ZERO) <= 0 &&
+                    right.high.value.compareTo(BigDecimal.ZERO) >= 0) {
                 return TOP;
             }
 
             FloatOrInf[] bounds = {
-                FloatOrInf.div(left.low, right.low),
-                FloatOrInf.div(left.low, right.high),
-                FloatOrInf.div(left.high, right.low),
-                FloatOrInf.div(left.high, right.high)
+                    FloatOrInf.div(left.low, right.low),
+                    FloatOrInf.div(left.low, right.high),
+                    FloatOrInf.div(left.high, right.low),
+                    FloatOrInf.div(left.high, right.high)
             };
             FloatOrInf low = FloatOrInf.min(Arrays.stream(bounds).toArray(FloatOrInf[]::new));
             FloatOrInf high = FloatOrInf.max(Arrays.stream(bounds).toArray(FloatOrInf[]::new));
@@ -189,10 +189,10 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
     }
 
     // Helper class for representing float or infinity
-    private static class FloatOrInf {
+    static class FloatOrInf {
         private final boolean isInf;
         private final boolean isNeg;
-        private final BigDecimal value;
+        final BigDecimal value;
         public static final FloatOrInf infiniteNeg = new FloatOrInf(true);
         public static final FloatOrInf infinitePos = new FloatOrInf(false);
 
@@ -340,13 +340,13 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
     }
 
     public ValueEnvironment<IntervalWithRounding> assumeBinaryExpression(
-        ValueEnvironment<IntervalWithRounding> environment,
-        BinaryOperator operator,
-        ValueExpression left,
-        ValueExpression right,
-        ProgramPoint src,
-        ProgramPoint dest,
-        SemanticOracle oracle) throws SemanticException {
+            ValueEnvironment<IntervalWithRounding> environment,
+            BinaryOperator operator,
+            ValueExpression left,
+            ValueExpression right,
+            ProgramPoint src,
+            ProgramPoint dest,
+            SemanticOracle oracle) throws SemanticException {
 
         if (environment.isBottom()) {
             return environment;
@@ -425,9 +425,9 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
             }
         } else if (operator instanceof ComparisonEq) {
             if (starting.low.value != null && eval.low.value != null &&
-                starting.high.value != null && eval.high.value != null &&
-                starting.low.value.compareTo(eval.low.value) <= 0 &&
-                starting.high.value.compareTo(eval.high.value) >= 0) {
+                    starting.high.value != null && eval.high.value != null &&
+                    starting.low.value.compareTo(eval.low.value) <= 0 &&
+                    starting.high.value.compareTo(eval.high.value) >= 0) {
                 update = new IntervalWithRounding(eval.low, eval.high);
             } else {
                 update = bottom();
@@ -443,13 +443,13 @@ public class IntervalWithRounding implements BaseNonRelationalValueDomain<Interv
         }
 
         IntervalWithRounding refined = new IntervalWithRounding(
-            FloatOrInf.max(starting.low, update.low),
-            FloatOrInf.min(starting.high, update.high)
+                FloatOrInf.max(starting.low, update.low),
+                FloatOrInf.min(starting.high, update.high)
         );
 
         if (!refined.isBottom() &&
-            refined.low.value != null && refined.high.value != null &&
-            refined.low.value.compareTo(refined.high.value) > 0) {
+                refined.low.value != null && refined.high.value != null &&
+                refined.low.value.compareTo(refined.high.value) > 0) {
             return environment.bottom();
         }
 
