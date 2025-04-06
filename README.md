@@ -1,3 +1,5 @@
+RENDU FINAL DANS LA BRANCHE TAS2025
+
 # IntervalWithRounding
 
 Ce projet implémente un **domaine abstrait non-relationnel d’intervalles numériques** prenant en compte les **arrondis flottants**.  
